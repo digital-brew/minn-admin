@@ -233,6 +233,9 @@ a { color: var(--accent2); text-decoration: none; }
 .minn-plugin-head { display: flex; align-items: center; gap: 8px; }
 .minn-plugin-name { font-weight: 700; font-size: 15px; }
 .minn-badge-update { font-size: 11.5px; font-weight: 600; color: var(--amber); background: rgba(224,164,88,0.14); padding: 2px 7px; border-radius: 5px; }
+.minn-badge-update.as-btn { border: 1px solid rgba(224,164,88,0.3); cursor: pointer; }
+.minn-badge-update.as-btn:hover { background: rgba(224,164,88,0.28); }
+.minn-badge-update.as-btn:disabled { opacity: 0.6; cursor: default; }
 .minn-plugin-desc { font-size: 13.5px; color: var(--text2); margin-top: 4px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .minn-plugin-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .minn-plugin-ver { font-size: 12.5px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
@@ -494,6 +497,20 @@ a.minn-btn-soft { text-decoration: none; }
   width: 26px; height: 26px; border-radius: 6px; background: var(--panel2); display: flex;
   align-items: center; justify-content: center; font-size: 12px; color: var(--text2); flex-shrink: 0;
 }
+
+/* ===== Editor panels (ACF etc.) ===== */
+.minn-panel-sub {
+  font-size: 11px; font-weight: 600; color: var(--text3); background: var(--panel2);
+  padding: 1px 7px; border-radius: 5px; margin-left: 6px; vertical-align: 1px;
+}
+.minn-panel-fields { display: flex; flex-direction: column; gap: 11px; }
+.minn-panel-group { font-size: 11.5px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.minn-panel-field .minn-field-label { margin-bottom: 4px; }
+.minn-panel-field .minn-input { font-size: 13px; padding: 7px 10px; }
+.minn-panel-field textarea.minn-input { resize: vertical; }
+.minn-panel-field.inline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.minn-panel-field.inline .minn-field-label { margin-bottom: 0; }
+.minn-panel-locked { font-size: 12px; color: var(--text3); padding-top: 2px; }
 
 /* ===== Notifications slide-over ===== */
 .minn-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }

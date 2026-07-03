@@ -1308,7 +1308,9 @@
 					<div class="minn-plugin-body">
 						<div class="minn-plugin-head">
 							<div class="minn-plugin-name">${ esc( name ) }</div>
-							${ hasUpdate ? `<span class="minn-badge-update" title="Update to ${ esc( updates[ p.plugin + '.php' ] ) }">Update</span>` : '' }
+							${ hasUpdate ? ( B.caps.update
+								? `<button class="minn-badge-update as-btn" data-update="${ esc( p.plugin ) }" title="Update to ${ esc( updates[ p.plugin + '.php' ] ) }">Update → ${ esc( updates[ p.plugin + '.php' ] ) }</button>`
+								: `<span class="minn-badge-update">Update</span>` ) : '' }
 						</div>
 						<div class="minn-plugin-desc">${ esc( stripTags( p.description && p.description.rendered ) ) }</div>
 						<div class="minn-plugin-foot">
@@ -1350,6 +1352,30 @@
 					toast( e.message, true );
 				}
 				renderExtensions();
+			} )
+		);
+
+		$$( '[data-update]', view ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', async () => {
+				const file = btn.dataset.update;
+				const plugin = plugins.find( ( p ) => p.plugin === file );
+				const name = decodeEntities( plugin.name );
+				btn.disabled = true;
+				const card = btn.closest( '.minn-plugin' );
+				if ( card ) card.classList.add( 'minn-busy' );
+				toast( `Updating ${ name }…` );
+				try {
+					const r = await api( 'minn-admin/v1/plugins/update', {
+						method: 'POST',
+						body: JSON.stringify( { plugin: file + '.php' } ),
+					} );
+					toast( `${ name } updated${ r.version ? ' to v' + r.version : '' }` );
+				} catch ( e ) {
+					toast( e.message, true );
+				}
+				state.cache.plugins = null;
+				await loadPlugins().catch( () => {} );
+				if ( state.route === 'extensions' ) renderExtensions();
 			} )
 		);
 
@@ -1440,13 +1466,28 @@
 			</div>`;
 		const pageOptions = [ [ 0, '— Select —' ], ...cache.pages.map( ( p ) => [ p.id, decodeEntities( p.title.rendered ) ] ) ];
 
+		const DAYS = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
+		const timezones = ( () => {
+			try {
+				const zones = Intl.supportedValuesOf( 'timeZone' );
+				if ( s.timezone && ! zones.includes( s.timezone ) ) zones.unshift( s.timezone );
+				return [ [ 'UTC', 'UTC' ], ...zones.map( ( z ) => [ z, z.replace( /_/g, ' ' ) ] ) ];
+			} catch ( e ) {
+				return [ [ 'UTC', 'UTC' ], ...( s.timezone ? [ [ s.timezone, s.timezone ] ] : [] ) ];
+			}
+		} )();
+
 		switch ( section ) {
 			case 'General': return {
 				sub: 'Basic information about your site.',
 				fields: text( 'title', 'Site title', s.title )
 					+ text( 'description', 'Tagline', s.description )
 					+ text( 'url', 'Site address', s.url, true )
-					+ text( 'email', 'Administration email', s.email, true ),
+					+ text( 'email', 'Administration email', s.email, true )
+					+ select( 'timezone', 'Timezone', timezones, s.timezone || 'UTC' )
+					+ text( 'date_format', 'Date format', s.date_format, true )
+					+ text( 'time_format', 'Time format', s.time_format, true )
+					+ select( 'start_of_week', 'Week starts on', DAYS.map( ( d, i ) => [ i, d ] ), s.start_of_week ),
 				toggles: [ { id: 'minn_admin_maintenance', label: 'Maintenance mode', desc: 'Show a coming-soon page to visitors.', on: !! s.minn_admin_maintenance } ].map( toggle ).join( '' ),
 			};
 			case 'Writing': return {
@@ -1542,7 +1583,7 @@
 		if ( saveBtn ) {
 			saveBtn.addEventListener( 'click', async () => {
 				saveBtn.disabled = true;
-				const NUMERIC = [ 'default_category', 'posts_per_page', 'page_on_front', 'page_for_posts' ];
+				const NUMERIC = [ 'default_category', 'posts_per_page', 'page_on_front', 'page_for_posts', 'start_of_week' ];
 				const payload = { ...pending };
 				$$( '[data-key]', view ).forEach( ( input ) => {
 					const key = input.dataset.key;
@@ -1646,11 +1687,33 @@
 		return out.join( '\n\n' );
 	}
 
+	// Extra response keys editor panels read their values from (e.g. "acf").
+	const panelValueKeys = () => ( B.editorPanels || [] ).map( ( p ) => p.valuesKey ).filter( Boolean );
+
+	async function loadEditorPanels( ed, post ) {
+		ed.panels = [];
+		ed.panelValues = {};
+		ed.panelDirty = {};
+		await Promise.all( ( B.editorPanels || [] ).map( async ( desc ) => {
+			if ( ! desc.fieldsRoute ) return;
+			try {
+				const route = desc.fieldsRoute.replace( '{id}', ed.id || 0 ).replace( '{type}', ed.type );
+				const r = await api( route );
+				const groups = ( r.groups || [] ).filter( ( g ) => g.fields.length || g.locked );
+				if ( ! groups.length ) return;
+				ed.panels.push( { desc, groups } );
+				ed.panelValues[ desc.id ] = ( post && desc.valuesKey && post[ desc.valuesKey ] ) ? { ...post[ desc.valuesKey ] } : {};
+			} catch ( e ) { /* panel just doesn't render */ }
+		} ) );
+		if ( ed.panels.length && state.route === 'editor' && state.editor === ed ) renderEditorSide();
+	}
+
 	async function loadEditor() {
 		if ( state.editorId ) {
 			// content.raw only — asking for content.rendered would run the_content,
 			// which can be slow or fatal if another plugin misbehaves.
-			const p = await api( `wp/v2/${ state.editorType }/${ state.editorId }?context=edit&_fields=id,title,content.raw,status,slug,link,categories,date` );
+			const extraKeys = panelValueKeys().map( ( k ) => ',' + k ).join( '' );
+			const p = await api( `wp/v2/${ state.editorType }/${ state.editorId }?context=edit&_fields=id,title,content.raw,status,slug,link,categories,date${ extraKeys }` );
 			const raw = ( p.content && p.content.raw ) || '';
 			const mode = editorModeFor( raw );
 			state.editor = {
@@ -1670,7 +1733,9 @@
 				savedAt: null,
 				categoryIds: new Set( p.categories || [] ),
 				revisions: null,
+				panels: null,
 			};
+			loadEditorPanels( state.editor, p );
 			// Revision history (types without revision support 404 — that's fine).
 			api( `wp/v2/${ state.editorType }/${ p.id }/revisions?per_page=6&_fields=id,modified,_links,_embedded&_embed=author` )
 				.then( ( revs ) => {
@@ -1701,7 +1766,9 @@
 			state.editor = {
 				id: null, type: 'posts', title: '', content: '', status: 'draft', mode: 'blocks',
 				date: null, newDate: null, slug: '', link: '', savedAt: null, categoryIds: new Set(),
+				revisions: null, panels: null,
 			};
+			loadEditorPanels( state.editor, null );
 		}
 		// All categories for the sidebar picker (posts only), cached per session.
 		if ( state.editor.type === 'posts' && ! state.cache.categories ) {
@@ -1734,6 +1801,11 @@
 		if ( ed.type === 'posts' && ed.catsDirty ) {
 			payload.categories = Array.from( ed.categoryIds );
 		}
+		( ed.panels || [] ).forEach( ( p ) => {
+			if ( ed.panelDirty && ed.panelDirty[ p.desc.id ] && p.desc.writeKey ) {
+				payload[ p.desc.writeKey ] = ed.panelValues[ p.desc.id ];
+			}
+		} );
 		try {
 			let p;
 			if ( ed.id ) {
@@ -1751,6 +1823,7 @@
 			if ( p.date ) ed.date = p.date;
 			if ( payload.date ) ed.newDate = null;
 			ed.savedAt = Date.now();
+			ed.panelDirty = {};
 			state.cache.content = null;
 			renderEditorSide();
 			renderTopbar();
@@ -1778,20 +1851,73 @@
 		return 'Publish';
 	}
 
+	function panelInput( pid, f, value ) {
+		const key = `${ pid }:${ f.name }`;
+		const v = value == null ? '' : value;
+		switch ( f.type ) {
+			case 'textarea':
+				return `<textarea class="minn-input" rows="3" data-pf="${ esc( key ) }">${ esc( String( v ) ) }</textarea>`;
+			case 'number':
+			case 'range':
+				return `<input class="minn-input" type="number" data-pf="${ esc( key ) }" value="${ esc( String( v ) ) }"${ f.min != null ? ` min="${ esc( String( f.min ) ) }"` : '' }${ f.max != null ? ` max="${ esc( String( f.max ) ) }"` : '' }>`;
+			case 'select':
+			case 'radio': {
+				const choices = Object.entries( f.choices || {} );
+				return `<select class="minn-input" data-pf="${ esc( key ) }">
+					<option value=""${ v === '' ? ' selected' : '' }>—</option>
+					${ choices.map( ( [ val, label ] ) => `<option value="${ esc( val ) }"${ String( v ) === String( val ) ? ' selected' : '' }>${ esc( String( label ) ) }</option>` ).join( '' ) }
+				</select>`;
+			}
+			case 'true_false':
+				return `<button class="minn-switch${ v ? ' on' : '' }" data-pftoggle="${ esc( key ) }" role="switch" aria-checked="${ !! v }"><span class="minn-switch-knob"></span></button>`;
+			default:
+				return `<input class="minn-input" data-pf="${ esc( key ) }" value="${ esc( String( v ) ) }">`;
+		}
+	}
+
+	function panelCard( ed, p ) {
+		const pid = p.desc.id;
+		const values = ed.panelValues[ pid ] || {};
+		const lockedTotal = p.groups.reduce( ( n, g ) => n + ( g.locked || 0 ), 0 );
+		return `
+		<div class="minn-side-card">
+			<div class="minn-side-title">${ esc( p.desc.label ) }${ p.desc.sub ? ` <span class="minn-panel-sub">${ esc( p.desc.sub ) }</span>` : '' }</div>
+			<div class="minn-panel-fields">
+				${ p.groups.map( ( g ) => `
+					${ p.groups.length > 1 ? `<div class="minn-panel-group">${ esc( g.group ) }</div>` : '' }
+					${ g.fields.map( ( f ) => `
+						<div class="minn-panel-field${ f.type === 'true_false' ? ' inline' : '' }">
+							<div class="minn-field-label">${ esc( f.label ) }</div>
+							${ panelInput( pid, f, values[ f.name ] ) }
+						</div>` ).join( '' ) }` ).join( '' ) }
+				${ lockedTotal && ed.id ? `<div class="minn-panel-locked">${ lockedTotal } advanced field${ lockedTotal === 1 ? '' : 's' } — <a href="${ esc( B.site.adminUrl ) }post.php?post=${ ed.id }&action=edit">edit in wp-admin ↗</a></div>` : '' }
+			</div>
+		</div>`;
+	}
+
 	function renderEditorSide() {
 		const ed = state.editor;
 		const el = $( '#minn-editor-side' );
 		if ( ! el || ! ed ) return;
 		const statusLabel = STATUS_LABELS[ ed.status ] || ed.status;
+		// Don't clobber an input the user is actively typing in — just refresh
+		// the status and save-time rows in place.
+		if ( el.contains( document.activeElement ) && document.activeElement.matches( 'input, textarea, select' ) ) {
+			const statusEl = $( '#minn-status-state', el );
+			if ( statusEl ) statusEl.textContent = statusLabel;
+			const savedEl = $( '#minn-saved-state', el );
+			if ( savedEl && ed.savedAt ) savedEl.textContent = timeAgo( new Date( ed.savedAt ).toISOString() );
+			return;
+		}
 		const dateValue = ( ed.newDate || ( ed.date ? ed.date.slice( 0, 16 ) : '' ) );
 		const cats = state.cache.categories;
 		el.innerHTML = `
 		<div class="minn-side-card">
 			<div class="minn-side-title">Publish</div>
 			<div class="minn-side-rows">
-				<div class="minn-side-row"><span class="minn-side-key">Status</span><span class="minn-side-val${ ed.status === 'publish' ? ' green' : ' amber' }" style="font-weight:600;">${ esc( statusLabel ) }</span></div>
+				<div class="minn-side-row"><span class="minn-side-key">Status</span><span class="minn-side-val${ ed.status === 'publish' ? ' green' : ' amber' }" style="font-weight:600;" id="minn-status-state">${ esc( statusLabel ) }</span></div>
 				<div class="minn-side-row"><span class="minn-side-key">Visibility</span><span>Public</span></div>
-				<div class="minn-side-row"><span class="minn-side-key">${ ed.savedAt ? 'Autosaved' : 'Saved' }</span><span class="minn-side-val green">${ ed.savedAt ? timeAgo( new Date( ed.savedAt ).toISOString() ) : ( ed.id ? '—' : 'Not yet' ) }</span></div>
+				<div class="minn-side-row"><span class="minn-side-key">${ ed.savedAt ? 'Autosaved' : 'Saved' }</span><span class="minn-side-val green" id="minn-saved-state">${ ed.savedAt ? timeAgo( new Date( ed.savedAt ).toISOString() ) : ( ed.id ? '—' : 'Not yet' ) }</span></div>
 			</div>
 			<div class="minn-schedule">
 				<div class="minn-side-key" style="margin-bottom:5px;">${ ed.status === 'future' ? 'Scheduled for' : 'Publish time' }</div>
@@ -1819,7 +1945,29 @@
 				}</div></div>` : '' }
 				${ ed.link && ed.status === 'publish' ? `<div><a href="${ esc( ed.link ) }" target="_blank" rel="noopener">View ${ ed.type === 'pages' ? 'page' : 'post' } ↗</a></div>` : '' }
 			</div>
-		</div>`;
+		</div>
+		${ ( ed.panels || [] ).map( ( p ) => panelCard( ed, p ) ).join( '' ) }`;
+
+		$$( '[data-pf]', el ).forEach( ( input ) => {
+			input.addEventListener( 'input', () => {
+				const [ pid, name ] = input.dataset.pf.split( ':' );
+				const val = input.type === 'number' ? ( input.value === '' ? null : Number( input.value ) ) : input.value;
+				( state.editor.panelValues[ pid ] = state.editor.panelValues[ pid ] || {} )[ name ] = val;
+				state.editor.panelDirty[ pid ] = true;
+				scheduleAutosave();
+			} );
+		} );
+		$$( '[data-pftoggle]', el ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', () => {
+				const [ pid, name ] = btn.dataset.pftoggle.split( ':' );
+				btn.classList.toggle( 'on' );
+				const on = btn.classList.contains( 'on' );
+				btn.setAttribute( 'aria-checked', on );
+				( state.editor.panelValues[ pid ] = state.editor.panelValues[ pid ] || {} )[ name ] = on;
+				state.editor.panelDirty[ pid ] = true;
+				scheduleAutosave();
+			} )
+		);
 
 		$$( '[data-rev]', el ).forEach( ( btn ) =>
 			btn.addEventListener( 'click', () => openRevision( ed, parseInt( btn.dataset.rev, 10 ) ) )

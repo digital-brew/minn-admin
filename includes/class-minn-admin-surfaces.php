@@ -43,4 +43,26 @@ class Minn_Admin_Surfaces {
 		}
 		return $out;
 	}
+
+	/**
+	 * Editor panels — per-post field panels shown in the editor sidebar.
+	 * Registered via the `minn_admin_editor_panels` filter; same shape of
+	 * capability gating as surfaces. See docs/for-plugin-authors.md.
+	 *
+	 * @return array
+	 */
+	public static function editor_panels_for_current_user() {
+		$panels = apply_filters( 'minn_admin_editor_panels', array() );
+		$out    = array();
+		foreach ( ( is_array( $panels ) ? $panels : array() ) as $id => $panel ) {
+			$cap = isset( $panel['cap'] ) ? $panel['cap'] : 'edit_posts';
+			if ( ! current_user_can( $cap ) ) {
+				continue;
+			}
+			unset( $panel['cap'] );
+			$panel['id'] = sanitize_key( $id );
+			$out[]       = $panel;
+		}
+		return $out;
+	}
 }

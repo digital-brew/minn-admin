@@ -109,6 +109,24 @@ class Minn_Admin_REST {
 
 		register_rest_route(
 			self::NS,
+			'/plugins/update',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'update_single_plugin' ),
+				'permission_callback' => function () {
+					return current_user_can( 'update_plugins' );
+				},
+				'args'                => array(
+					'plugin' => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/plugins/update-all',
 			array(
 				'methods'             => 'POST',
@@ -452,6 +470,41 @@ class Minn_Admin_REST {
 		unset( $tokens[ $verifier ] );
 		update_user_meta( $uid, 'session_tokens', $tokens );
 		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * Update one plugin by its plugin file (e.g. "akismet/akismet.php").
+	 */
+	public static function update_single_plugin( WP_REST_Request $request ) {
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+
+		$file = sanitize_text_field( $request['plugin'] );
+
+		wp_update_plugins();
+		$updates = get_site_transient( 'update_plugins' );
+		if ( ! $updates || empty( $updates->response[ $file ] ) ) {
+			return new WP_Error( 'no_update', 'No update available for that plugin.', array( 'status' => 400 ) );
+		}
+
+		$skin     = new WP_Ajax_Upgrader_Skin();
+		$upgrader = new Plugin_Upgrader( $skin );
+		$result   = $upgrader->upgrade( $file );
+
+		if ( ! $result || is_wp_error( $result ) ) {
+			$errors = $skin->get_error_messages();
+			return new WP_Error( 'update_failed', $errors ? implode( ' ', (array) $errors ) : 'Update failed.', array( 'status' => 500 ) );
+		}
+
+		$plugins = get_plugins();
+		return rest_ensure_response(
+			array(
+				'updated' => true,
+				'version' => isset( $plugins[ $file ]['Version'] ) ? $plugins[ $file ]['Version'] : '',
+			)
+		);
 	}
 
 	/**

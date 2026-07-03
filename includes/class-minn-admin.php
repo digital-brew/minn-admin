@@ -170,6 +170,7 @@ class Minn_Admin {
 			'pretty'   => (bool) get_option( 'permalink_structure' ),
 			'roles'    => current_user_can( 'list_users' ) ? wp_roles()->get_names() : new \stdClass(),
 			'surfaces' => Minn_Admin_Surfaces::for_current_user(),
+			'editorPanels' => Minn_Admin_Surfaces::editor_panels_for_current_user(),
 		);
 
 		include MINN_ADMIN_DIR . 'includes/template.php';
