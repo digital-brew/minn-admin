@@ -76,6 +76,43 @@ would query them directly and expose a REST collection Minn can consume).
   ~40 lines of SQL-to-REST in `includes/adapters/gravity-smtp.php`, then the generic descriptor
   renders the log (subject, to, status, opened) with a detail modal showing the message body.
 
+## Integration classes — not every plugin is a list
+
+Collection surfaces (built: Gravity Forms, Gravity SMTP, and WooCommerce bespoke) cover plugins
+whose admin is fundamentally a **list of records**. Popular plugins fall into three classes, and
+only the first one wants an adapter of the kind we've built:
+
+| Class | Shape | Examples | Minn strategy |
+|---|---|---|---|
+| **1. Collections** | Lists of records (entries, logs, orders, submissions) | Gravity Forms, Gravity SMTP, WooCommerce | Surface descriptors — **built** |
+| **2. Editor companions** | Per-post fields and metaboxes | ACF / ACF Pro, Rank Math, Yoast SEO | **Editor panels** (planned, below) — not a sidebar surface |
+| **3. Configuration** | One options page, set-and-forget | Perfmatters, caching/security plugins | Mostly *don't* — link out; optionally a small settings surface for high-frequency toggles |
+
+### Class 2: editor panels (the next framework investment)
+
+ACF and the SEO plugins live *inside the post*, so their Minn integration belongs in the editor
+sidebar, not the nav. The plan mirrors surfaces — declarative panels registered via a
+`minn_admin_editor_panels` filter:
+
+- **ACF / ACF Pro** — field groups with "Show in REST" enabled already expose an `acf` object on
+  the post REST response, readable and writable. A panel descriptor maps field names/types to
+  Minn inputs; complex field types (repeaters, flexible content) stay in wp-admin with a
+  link-out, exactly like the editor's locked mode. ACF is the flagship candidate.
+- **Rank Math / Yoast SEO** — the valuable 90% is three fields: SEO title, meta description,
+  focus keyword. Neither plugin registers its post meta for REST, so the adapter ships a tiny
+  shim (`register_post_meta` with `show_in_rest` + an `auth_callback` requiring `edit_post`) for
+  `rank_math_title` / `rank_math_description` / `rank_math_focus_keyword` or
+  `_yoast_wpseo_title` / `_yoast_wpseo_metadesc` / `_yoast_wpseo_focuskw`. A snippet-preview
+  panel then reads/writes them through the normal post endpoint. Scores and content analysis
+  stay in wp-admin — that's their moat, not ours.
+
+### Class 3: configuration plugins
+
+Perfmatters and friends are dense option pages people touch a few times per site. Rebuilding
+them declaratively is high effort, low frequency, high breakage risk. Default answer: an
+Extensions-card "Settings ↗" link into wp-admin. If a specific toggle turns out to be touched
+weekly, promote just that toggle into a small settings surface.
+
 ## Suggested build order
 
 1. Extract the generic collection renderer from Orders/Users into a descriptor interpreter.
