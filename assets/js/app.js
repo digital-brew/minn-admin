@@ -255,6 +255,7 @@
 			trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 			upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
 			logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+			globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>',
 		};
 		return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ icons[ name ] || '' }</svg>`;
 	}
@@ -298,8 +299,10 @@
 		<div class="minn-shell">
 			<aside class="minn-sidebar">
 				<div class="minn-logo">
-					<div class="minn-logo-mark">m</div>
-					<div class="minn-logo-name">minn</div>
+					<button class="minn-logo-home" id="minn-logo-home" title="Overview">
+						<span class="minn-logo-mark">m</span>
+						<span class="minn-logo-name">minn</span>
+					</button>
 					<div class="minn-logo-ver">v${ esc( B.version.split( '.' ).slice( 0, 2 ).join( '.' ) ) }</div>
 				</div>
 				<button class="minn-search-btn" id="minn-open-palette">
@@ -308,7 +311,7 @@
 				<div class="minn-nav-label">Workspace</div>
 				${ navItems.map( navBtn ).join( '' ) }
 				${ manageItems.length ? '<div class="minn-nav-label later">Manage</div>' + manageItems.map( navBtn ).join( '' ) : '' }
-				<div class="minn-user">
+				<div class="minn-user" id="minn-user-area" title="Your account">
 					<img class="minn-user-avatar" src="${ esc( B.user.avatar ) }" alt="">
 					<div style="min-width:0;">
 						<div class="minn-user-name">${ esc( B.user.name ) }</div>
@@ -322,6 +325,7 @@
 					<div class="minn-topbar-title" id="minn-title"></div>
 					<div class="minn-topbar-sub" id="minn-sub"></div>
 					<div class="minn-topbar-actions">
+						<a class="minn-icon-btn" id="minn-view-site" href="${ esc( B.site.url ) }" target="_blank" rel="noopener" title="View site">${ icon( 'globe' ) }</a>
 						<button class="minn-icon-btn" id="minn-theme-btn" title="Toggle theme"></button>
 						<button class="minn-icon-btn" id="minn-notif-btn" title="Notifications">
 							${ icon( 'bell' ) }<span class="minn-unread-dot" id="minn-unread-dot" hidden></span>
@@ -338,6 +342,11 @@
 			btn.addEventListener( 'click', () => go( btn.dataset.nav ) )
 		);
 		$( '#minn-open-palette' ).addEventListener( 'click', openPalette );
+		$( '#minn-logo-home' ).addEventListener( 'click', () => go( 'overview' ) );
+		$( '#minn-user-area' ).addEventListener( 'click', ( e ) => {
+			if ( e.target.closest( 'a' ) ) return; // logout link
+			openUserModal( B.user.id );
+		} );
 		$( '#minn-theme-btn' ).addEventListener( 'click', toggleTheme );
 		$( '#minn-notif-btn' ).addEventListener( 'click', toggleNotif );
 		$( '#minn-new-btn' ).addEventListener( 'click', () => { state.editorId = null; state.editorType = 'posts'; go( 'editor' ); } );
@@ -1606,14 +1615,91 @@
 	/* ===== Editor ===== */
 
 	// Blocks whose markup survives a contenteditable round-trip. Anything else
-	// (embeds, columns, custom blocks…) locks the body to protect the layout.
+	// (embeds, columns, custom blocks…) becomes an atomic non-editable island:
+	// preserved byte-for-byte on save, editable text around it.
 	const SIMPLE_BLOCKS = [ 'paragraph', 'heading', 'quote', 'code', 'preformatted', 'list', 'list-item', 'image', 'html', 'separator', 'more' ];
+
+	// Split raw post content into top-level segments: {type:'block',name,raw}
+	// and {type:'html',raw} (freeform chunks). Returns null when the comment
+	// structure is unbalanced or the segments don't reassemble the original —
+	// the caller falls back to locked mode.
+	function tokenizeBlocks( raw ) {
+		const re = /<!--\s*(\/)?wp:([a-z][a-z0-9_-]*(?:\/[a-z][a-z0-9_-]*)?)((?:(?!-->)[\s\S])*?)(\/)?\s*-->/g;
+		const segments = [];
+		let depth = 0;
+		let segStart = 0;
+		let blockStart = 0;
+		let blockName = '';
+		let m;
+		while ( ( m = re.exec( raw ) ) ) {
+			const closing = !! m[ 1 ];
+			const selfClosing = !! m[ 4 ];
+			if ( closing ) {
+				if ( depth === 0 ) return null;
+				depth--;
+				if ( depth === 0 ) {
+					segments.push( { type: 'block', name: blockName, raw: raw.slice( blockStart, m.index + m[ 0 ].length ) } );
+					segStart = m.index + m[ 0 ].length;
+				}
+			} else if ( selfClosing ) {
+				if ( depth === 0 ) {
+					if ( m.index > segStart ) segments.push( { type: 'html', raw: raw.slice( segStart, m.index ) } );
+					segments.push( { type: 'block', name: m[ 2 ], raw: m[ 0 ] } );
+					segStart = m.index + m[ 0 ].length;
+				}
+			} else {
+				if ( depth === 0 ) {
+					if ( m.index > segStart ) segments.push( { type: 'html', raw: raw.slice( segStart, m.index ) } );
+					blockStart = m.index;
+					blockName = m[ 2 ];
+				}
+				depth++;
+			}
+		}
+		if ( depth !== 0 ) return null;
+		if ( segStart < raw.length ) segments.push( { type: 'html', raw: raw.slice( segStart ) } );
+		if ( segments.map( ( s ) => s.raw ).join( '' ) !== raw ) return null;
+		return segments;
+	}
 
 	function editorModeFor( raw ) {
 		if ( ! /<!--\s*wp:/.test( raw ) ) return 'classic';
-		const names = Array.from( raw.matchAll( /<!--\s*wp:([a-z0-9\/_-]+)/g ) )
-			.map( ( m ) => m[ 1 ].replace( /^core\//, '' ) );
-		return names.every( ( n ) => SIMPLE_BLOCKS.includes( n ) ) ? 'blocks' : 'locked';
+		return tokenizeBlocks( raw ) ? 'blocks' : 'locked';
+	}
+
+	// Attributes the serializer reproduces faithfully; any other attribute on a
+	// simple block turns it into an island so nothing is silently dropped.
+	const EDITABLE_ATTRS = { heading: [ 'level' ], list: [ 'ordered' ] };
+
+	function segmentEditable( seg ) {
+		const name = seg.name.replace( /^core\//, '' );
+		if ( ! SIMPLE_BLOCKS.includes( name ) ) return false;
+		const m = seg.raw.match( /^<!--\s*wp:[a-z0-9\/_-]+\s+(\{[\s\S]*?\})\s*\/?-->/ );
+		if ( ! m ) return true;
+		try {
+			const attrs = JSON.parse( m[ 1 ] );
+			const allowed = EDITABLE_ATTRS[ name ] || [];
+			return Object.keys( attrs ).every( ( k ) => allowed.includes( k ) );
+		} catch ( e ) {
+			return false;
+		}
+	}
+
+	// Build the contenteditable HTML: simple blocks stripped of comments,
+	// complex blocks as atomic islands whose raw markup is stored verbatim.
+	function buildEditableContent( ed, raw ) {
+		const segments = tokenizeBlocks( raw ) || [];
+		ed.islands = [];
+		return segments.map( ( seg ) => {
+			if ( seg.type === 'html' ) return seg.raw;
+			if ( segmentEditable( seg ) ) return stripBlockComments( seg.raw );
+			const idx = ed.islands.push( seg.raw ) - 1;
+			const inner = stripBlockComments( seg.raw ).trim();
+			return `<div class="minn-block-island" contenteditable="false" data-island="${ idx }">
+				<span class="minn-island-chip">${ esc( seg.name.replace( /^core\//, '' ) ) }</span>
+				${ inner ? `<div class="minn-island-preview">${ inner }</div>` : '<div class="minn-island-empty">Dynamic block — rendered on the site</div>' }
+			</div>`;
+		} ).join( '\n' );
 	}
 
 	const stripBlockComments = ( raw ) => raw.replace( /<!--\s*\/?wp:[\s\S]*?-->\n?/g, '' );
@@ -1631,7 +1717,7 @@
 	}
 
 	// Serialize the edited DOM back to Gutenberg block markup.
-	function serializeToBlocks( root ) {
+	function serializeToBlocks( root, islands ) {
 		const out = [];
 		const pushBlock = ( name, attrs, html ) =>
 			out.push( `<!-- wp:${ name }${ attrs ? ' ' + JSON.stringify( attrs ) : '' } -->\n${ html }\n<!-- /wp:${ name } -->` );
@@ -1643,6 +1729,12 @@
 				return;
 			}
 			if ( n.nodeType !== Node.ELEMENT_NODE ) return;
+			// Islands pass through byte-for-byte from the original markup.
+			if ( n.classList.contains( 'minn-block-island' ) ) {
+				const raw = islands && islands[ parseInt( n.dataset.island, 10 ) ];
+				if ( raw != null ) out.push( raw.trim() );
+				return;
+			}
 			const tag = n.tagName.toLowerCase();
 			const el = n.cloneNode( true );
 			el.removeAttribute( 'style' );
@@ -1661,9 +1753,10 @@
 					: `<!-- wp:paragraph -->\n<p>${ el.innerHTML }</p>\n<!-- /wp:paragraph -->`;
 				pushBlock( 'quote', null, `<blockquote class="wp-block-quote">${ inner }</blockquote>` );
 			} else if ( tag === 'pre' ) {
+				// textContent so syntax-highlight spans never reach the database.
 				const code = el.querySelector( 'code' );
-				const body = code ? code.innerHTML : el.innerHTML;
-				pushBlock( 'code', null, `<pre class="wp-block-code"><code>${ body }</code></pre>` );
+				const text = ( code || el ).textContent;
+				pushBlock( 'code', null, `<pre class="wp-block-code"><code>${ esc( text ) }</code></pre>` );
 			} else if ( tag === 'ul' || tag === 'ol' ) {
 				el.classList.add( 'wp-block-list' );
 				const items = Array.from( el.querySelectorAll( ':scope > li' ) )
@@ -1708,6 +1801,50 @@
 		if ( ed.panels.length && state.route === 'editor' && state.editor === ed ) renderEditorSide();
 	}
 
+	/* ===== Code syntax highlighting (no dependencies) ===== */
+
+	const HL_KEYWORDS = /\b(function|return|if|else|elseif|endif|for|foreach|endforeach|while|do|switch|case|default|break|continue|class|interface|trait|extends|implements|new|const|let|var|public|private|protected|static|final|abstract|echo|print|use|namespace|require|require_once|include|include_once|async|await|try|catch|finally|throw|typeof|instanceof|in|of|true|false|null|undefined|this|self|parent|def|import|from|export|as|global|add_action|add_filter)\b/g;
+
+	function highlightCode( text ) {
+		const out = [];
+		const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:^|(?<=\s))#[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(\d+(?:\.\d+)?)\b/g;
+		const plain = ( s ) => esc( s ).replace( HL_KEYWORDS, '<span class="tok-kw">$1</span>' );
+		let last = 0;
+		let m;
+		while ( ( m = re.exec( text ) ) ) {
+			out.push( plain( text.slice( last, m.index ) ) );
+			if ( m[ 1 ] ) out.push( `<span class="tok-com">${ esc( m[ 1 ] ) }</span>` );
+			else if ( m[ 2 ] ) out.push( `<span class="tok-str">${ esc( m[ 2 ] ) }</span>` );
+			else out.push( `<span class="tok-num">${ esc( m[ 3 ] ) }</span>` );
+			last = m.index + m[ 0 ].length;
+		}
+		out.push( plain( text.slice( last ) ) );
+		return out.join( '' );
+	}
+
+	// Re-render code blocks with highlight spans. Skips the block holding the
+	// caret; spans never persist (the serializer stores pre via textContent).
+	function highlightCodeBlocks( container ) {
+		const sel = window.getSelection();
+		const anchorEl = sel && sel.anchorNode
+			? ( sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement )
+			: null;
+		$$( 'pre', container ).forEach( ( pre ) => {
+			if ( anchorEl && pre.contains( anchorEl ) ) return;
+			if ( pre.closest( '.minn-block-island' ) ) return; // islands stay verbatim
+			let code = pre.querySelector( 'code' );
+			const text = ( code || pre ).textContent;
+			if ( pre.dataset.hl === text ) return;
+			if ( ! code ) {
+				pre.textContent = '';
+				code = document.createElement( 'code' );
+				pre.appendChild( code );
+			}
+			code.innerHTML = highlightCode( text );
+			pre.dataset.hl = text;
+		} );
+	}
+
 	async function loadEditor() {
 		if ( state.editorId ) {
 			// content.raw only — asking for content.rendered would run the_content,
@@ -1720,9 +1857,8 @@
 				id: p.id,
 				type: state.editorType,
 				title: decodeEntities( ( p.title && ( p.title.raw != null ? p.title.raw : p.title.rendered ) ) || '' ),
-				content: mode === 'blocks' ? stripBlockComments( raw )
-					: mode === 'classic' ? miniAutop( raw )
-					: stripBlockComments( raw ),
+				content: '',
+				islands: [],
 				mode,
 				editUrl: B.site.adminUrl + 'post.php?post=' + p.id + '&action=edit',
 				status: p.status,
@@ -1735,6 +1871,9 @@
 				revisions: null,
 				panels: null,
 			};
+			state.editor.content = mode === 'blocks' ? buildEditableContent( state.editor, raw )
+				: mode === 'classic' ? miniAutop( raw )
+				: stripBlockComments( raw );
 			loadEditorPanels( state.editor, p );
 			// Revision history (types without revision support 404 — that's fine).
 			api( `wp/v2/${ state.editorType }/${ p.id }/revisions?per_page=6&_fields=id,modified,_links,_embedded&_embed=author` )
@@ -1757,7 +1896,10 @@
 						if ( state.editor && state.editor.id === p.id && r.content && r.content.rendered ) {
 							state.editor.content = r.content.rendered;
 							const body = $( '#minn-editor-body' );
-							if ( body ) body.innerHTML = r.content.rendered;
+							if ( body ) {
+								body.innerHTML = r.content.rendered;
+								highlightCodeBlocks( body );
+							}
 						}
 					} )
 					.catch( () => {} );
@@ -1795,7 +1937,7 @@
 		if ( ed.mode !== 'locked' ) {
 			const body = $( '#minn-editor-body' );
 			if ( body ) {
-				payload.content = ed.mode === 'blocks' ? serializeToBlocks( body ) : body.innerHTML;
+				payload.content = ed.mode === 'blocks' ? serializeToBlocks( body, ed.islands ) : body.innerHTML;
 			}
 		}
 		if ( ed.type === 'posts' && ed.catsDirty ) {
@@ -2028,8 +2170,8 @@
 				<input class="minn-editor-title" id="minn-editor-title" placeholder="Untitled" value="${ esc( ed.title ) }">
 				${ locked ? `
 				<div class="minn-editor-locked-note">
-					This ${ ed.type === 'pages' ? 'page' : 'post' } uses advanced blocks that Minn can't safely edit yet.
-					The preview below is read-only — the title can still be edited here.
+					Minn couldn't safely parse this ${ ed.type === 'pages' ? 'page' : 'post' }'s block structure,
+					so the body is read-only — the title can still be edited here.
 					<a href="${ esc( ed.editUrl ) }">Open in block editor ↗</a>
 				</div>` : `
 				<div class="minn-editor-toolbar">
@@ -2051,10 +2193,17 @@
 
 		const body = $( '#minn-editor-body', view );
 		body.innerHTML = ed.content;
+		highlightCodeBlocks( body );
 
 		$( '#minn-editor-title', view ).addEventListener( 'input', scheduleAutosave );
 		if ( ! locked ) {
-			body.addEventListener( 'input', scheduleAutosave );
+			let hlTimer = null;
+			body.addEventListener( 'input', () => {
+				scheduleAutosave();
+				clearTimeout( hlTimer );
+				hlTimer = setTimeout( () => highlightCodeBlocks( body ), 900 );
+			} );
+			body.addEventListener( 'blur', () => highlightCodeBlocks( body ) );
 
 			const insertImage = () => openMediaPicker( ( it ) => {
 				const b = $( '#minn-editor-body' );
@@ -2688,6 +2837,7 @@
 		if ( preview ) {
 			const raw = ( rev.content && ( rev.content.raw != null ? rev.content.raw : rev.content.rendered ) ) || '';
 			preview.innerHTML = stripBlockComments( raw ) || '<span style="color:var(--text3);">(empty)</span>';
+			highlightCodeBlocks( preview );
 		}
 		const restore = $( '#minn-restore-rev' );
 		if ( restore ) {

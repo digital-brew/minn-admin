@@ -72,6 +72,11 @@ a { color: var(--accent2); text-decoration: none; }
   display: flex; flex-direction: column; padding: 14px 12px; gap: 2px;
 }
 .minn-logo { display: flex; align-items: center; gap: 10px; padding: 8px 8px 16px; }
+.minn-logo-home {
+  display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;
+  cursor: pointer; color: inherit; border-radius: 8px;
+}
+.minn-logo-home:hover .minn-logo-name { color: var(--accent2); }
 .minn-logo-mark {
   width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), var(--accent2));
   display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 16px; letter-spacing: -0.5px;
@@ -100,7 +105,8 @@ a { color: var(--accent2); text-decoration: none; }
 .minn-nav-count { margin-left: auto; font-size: 12px; color: var(--text3); background: var(--panel); padding: 1px 7px; border-radius: 20px; }
 .minn-nav-dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
 
-.minn-user { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-top: 1px solid var(--border); }
+.minn-user { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-top: 1px solid var(--border); cursor: pointer; border-radius: 9px; }
+.minn-user:hover { background: var(--hover); }
 .minn-user-avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--pink), var(--amber)); flex-shrink: 0; object-fit: cover; }
 .minn-user-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .minn-user-role { font-size: 12px; color: var(--text3); }
@@ -322,7 +328,8 @@ select.minn-input {
 .minn-toggle-desc { font-size: 13px; color: var(--text3); margin-top: 2px; }
 
 /* ===== Editor ===== */
-.minn-editor { display: grid; grid-template-columns: 1fr 260px; gap: 26px; max-width: 1000px; margin: 0 auto; }
+.minn-editor { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 26px; max-width: 1000px; margin: 0 auto; }
+.minn-editor > div { min-width: 0; }
 .minn-editor-title {
   width: 100%; background: transparent; border: none; outline: none; color: var(--text);
   font-size: 34px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 6px;
@@ -332,7 +339,9 @@ select.minn-input {
 .minn-tool { padding: 6px 9px; border-radius: 7px; cursor: pointer; background: none; border: none; color: var(--text2); font-size: 14px; }
 .minn-tool:hover { background: var(--hover); color: var(--text); }
 .minn-tool.b { font-weight: 700; } .minn-tool.i { font-style: italic; }
-.minn-editor-body { color: var(--text); line-height: 1.75; font-size: 16px; min-height: 40vh; outline: none; }
+.minn-editor-body { color: var(--text); line-height: 1.75; font-size: 16px; min-height: 40vh; outline: none; overflow-x: hidden; overflow-wrap: break-word; }
+.minn-editor-body table { display: block; max-width: 100%; overflow-x: auto; }
+.minn-editor-body iframe, .minn-editor-body video { max-width: 100%; }
 .minn-editor-body p { margin: 0 0 16px; }
 .minn-editor-body h1, .minn-editor-body h2 { letter-spacing: -0.4px; }
 .minn-editor-body blockquote { border-left: 3px solid var(--accent); margin: 0 0 16px; padding: 2px 0 2px 16px; color: var(--text2); }
@@ -497,6 +506,28 @@ a.minn-btn-soft { text-decoration: none; }
   width: 26px; height: 26px; border-radius: 6px; background: var(--panel2); display: flex;
   align-items: center; justify-content: center; font-size: 12px; color: var(--text2); flex-shrink: 0;
 }
+
+/* ===== Block islands (complex blocks preserved verbatim) ===== */
+.minn-block-island {
+  position: relative; border: 1px dashed var(--border2); border-radius: 11px;
+  padding: 14px 16px 12px; margin: 0 0 18px; cursor: default; user-select: none;
+}
+.minn-block-island:hover { border-color: var(--accent); }
+.minn-island-chip {
+  position: absolute; top: -9px; right: 12px; font-size: 10.5px; font-weight: 600;
+  font-family: 'JetBrains Mono', monospace; color: var(--text3); background: var(--panel);
+  border: 1px solid var(--border); padding: 1px 8px; border-radius: 5px;
+}
+.minn-block-island:hover .minn-island-chip { color: var(--accent2); border-color: var(--accent); }
+.minn-island-preview { pointer-events: none; opacity: 0.85; overflow: hidden; max-height: 420px; }
+.minn-island-preview > :last-child { margin-bottom: 0; }
+.minn-island-empty { color: var(--text3); font-size: 13.5px; font-style: italic; }
+
+/* ===== Code syntax highlighting ===== */
+.tok-kw { color: var(--accent2); }
+.tok-str { color: var(--green); }
+.tok-num { color: var(--amber); }
+.tok-com { color: var(--text3); font-style: italic; }
 
 /* ===== Editor panels (ACF etc.) ===== */
 .minn-panel-sub {
