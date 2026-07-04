@@ -1,6 +1,6 @@
 # Changelog
 
-## **v0.1.0** - Unreleased
+## **v0.1.0** - July 3, 2026
 
 ### Added
 * **Minn Admin app:** A reimagined WordPress admin served at `/minn-admin/` — a standalone single-page app that talks to the WordPress REST API and lives alongside the classic wp-admin.
