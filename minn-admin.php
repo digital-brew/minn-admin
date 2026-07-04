@@ -30,6 +30,9 @@ require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-forms.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/gravity-smtp.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/acf.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/koko-analytics.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/wp-statistics.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/burst-statistics.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/independent-analytics.php';
 
 Minn_Admin::init();
 Minn_Admin_REST::init();

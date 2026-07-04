@@ -111,8 +111,10 @@ add_filter( 'minn_admin_traffic', function ( $traffic, $days ) {
 
 Minn buckets the days to match the selected range (daily up to 45 days, weekly beyond), renders
 the Traffic chart with your plugin's name as the source badge, and leads the stat cards with
-Visitors and a period-over-period delta. The bundled **Koko Analytics** adapter
-(`includes/adapters/koko-analytics.php`) is the reference implementation.
+Visitors and a period-over-period delta. Bundled adapters cover **Koko Analytics** (the
+reference implementation), **WP Statistics**, **Burst Statistics** and **Independent
+Analytics** — the first active provider answers, so a plugin registering its own adapter
+should return early when `$traffic` is already non-null.
 
 ## No REST API? Ship a shim
 
