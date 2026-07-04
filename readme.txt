@@ -30,6 +30,8 @@ Features:
 
 == Installation ==
 
+Try it instantly in WordPress Playground: https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fdknauss%2Fminn-admin%2Fmain%2F.wp-playground%2Fblueprint.json
+
 1. Upload the `minn-admin` folder to `/wp-content/plugins/`.
 2. Activate the plugin through the Plugins screen.
 3. Visit `/minn-admin/` (also linked from the admin bar and the wp-admin menu).

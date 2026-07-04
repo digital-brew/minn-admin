@@ -8,6 +8,8 @@ and it lives *alongside* the classic wp-admin, which stays fully available.
 
 ![Minn Admin — Overview](.github/screenshot-dark.png)
 
+[![Launch in WordPress Playground](https://playground.wordpress.net/badge.svg)](https://playground.wordpress.net/?blueprint-url=https%3A%2F%2Fraw.githubusercontent.com%2Fdknauss%2Fminn-admin%2Fmain%2F.wp-playground%2Fblueprint.json)
+
 ## Features
 
 - **Overview** — real stat cards, an activity chart, and a recent-activity feed
