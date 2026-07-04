@@ -7,6 +7,7 @@
 * **Dark code surfaces:** Code blocks in the editor and previews always render on a dark surface with a fixed highlight palette, so syntax colors are equally readable in light and dark themes.
 
 * **Theme installs:** An "Add theme" flow on the Themes tab with a WordPress.org search picker (screenshot cards, install and activate in place) and zip upload via drag-and-drop or file picker.
+* **Redirects:** A bundled **Redirection** adapter lists redirects (source, target, status code, hits, last access) straight from its redirection/v1 API, with enable, disable and delete actions via its bulk endpoints.
 * **Activity Log:** A bundled **Simple History** adapter surfaces the audit log as a native Minn view — events with who/level/when columns, Warnings and Errors tabs, and detail modals — visibility following Simple History's own view capability.
 * **Plugin installs:** An "Add plugin" modal on Extensions with a WordPress.org search picker (server-side proxy — the app never talks to external hosts), install/activate in place, and zip upload via drag-and-drop or file picker.
 * **AI Access:** Your account now manages **application passwords** — create a revocable credential for an AI agent (shown once, with copy-password and copy-curl buttons) and revoke any credential — plus a generated **agent guide**: a markdown REST reference tailored to what's installed on the site (core routes, WooCommerce, Gravity Forms, ACF, Minn extras), ready to hand to a coding agent.

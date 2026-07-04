@@ -51,7 +51,7 @@ That's a working, paginated, capability-gated view in the Minn sidebar.
 | `route` | REST route for the list. May contain `{tab}` (replaced with the active tab value) |
 | `allRoute` | Route used for the "All" tab when `route` contains `{tab}` |
 | `query` | Extra query string appended to every request (sorting etc.) |
-| `pageQuery` | Pagination template, default `per_page=25&page={page}`. Use your API's own style, e.g. Gravity Forms' `paging[page_size]=25&paging[current_page]={page}` |
+| `pageQuery` | Pagination template, default `per_page=25&page={page}`. `{page}` is 1-based; use `{page0}` for zero-based APIs (Redirection). Use your API's own style, e.g. Gravity Forms' `paging[page_size]=25&paging[current_page]={page}` |
 | `itemsKey` / `totalKey` | Where items/total live in the response body. Omit both for standard WP collections (plain array + `X-WP-Total` header) |
 | `tabs` | Either `{ "route": "...", "valueKey": "id", "labelKey": "title" }` to build tabs from a REST call, or `{ "param": "status", "static": [["sent","Sent"],["failed","Failed"]] }` for fixed tabs sent as a query param. `allLabel` names the first tab |
 | `columns` | Array of `{ key, label, format }`. Formats: `title`, `text` (default), `pill`, `ago`, `mono`, `entry-summary` (first scalar values of numeric keys — useful for form entries) |
@@ -132,6 +132,6 @@ plus a descriptor. Rules of the road: check capabilities in `permission_callback
 - Escape nothing yourself — Minn escapes every value it renders.
 - Bundled adapters live in `includes/adapters/` and are guarded by `class_exists`/`defined`
   checks; PRs adding adapters for widely-used plugins are welcome. Current set: Gravity Forms,
-  Gravity SMTP, ACF, Simple History, and four analytics providers (Koko, WP Statistics, Burst,
-  Independent Analytics).
+  Gravity SMTP, ACF, Simple History, Redirection, and four analytics providers (Koko,
+  WP Statistics, Burst, Independent Analytics).
 - Column keys support dot paths (`initiator_data.user_login`) plus an optional `altKey` fallback.
