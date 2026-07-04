@@ -260,6 +260,7 @@
 			copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
 			inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
 			send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+			clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
 			trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 			upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
 			logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
@@ -1250,8 +1251,15 @@
 		return vals.slice( 0, 3 ).join( ' · ' ).slice( 0, 90 ) || '(empty entry)';
 	}
 
+	// Dot-path lookup ("initiator_data.user_login") with an optional fallback.
+	function surfaceValue( item, key ) {
+		if ( ! key ) return undefined;
+		return key.split( '.' ).reduce( ( o, k ) => ( o && typeof o === 'object' ? o[ k ] : undefined ), item );
+	}
+
 	function surfaceCell( item, colDef ) {
-		const v = item[ colDef.key ];
+		let v = surfaceValue( item, colDef.key );
+		if ( ( v == null || v === '' ) && colDef.altKey ) v = surfaceValue( item, colDef.altKey );
 		switch ( colDef.format ) {
 			case 'ago': return `<div class="minn-row-meta">${ v ? timeAgo( String( v ).replace( ' ', 'T' ) ) : '—' }</div>`;
 			case 'pill': return `<div>${ surfacePill( v ) }</div>`;
@@ -1543,6 +1551,7 @@
 		<div class="minn-toolbar">
 			${ extTabsHtml() }
 			<div class="minn-toolbar-meta">${ themes.length } installed</div>
+			${ B.caps.installThemes ? `<button class="minn-btn-soft" id="minn-add-theme" style="margin-left:auto;">${ icon( 'plus' ) } Add theme</button>` : '' }
 		</div>
 		<div class="minn-theme-grid">
 			${ themes.map( ( t, i ) => `
@@ -1564,6 +1573,13 @@
 		</div>`;
 
 		bindExtTabs( view );
+		const addTheme = $( '#minn-add-theme', view );
+		if ( addTheme ) {
+			addTheme.addEventListener( 'click', () => {
+				state.modal = { type: 'theme-install', q: '', results: null, searching: false };
+				renderOverlays();
+			} );
+		}
 		$$( '[data-tact]', view ).forEach( ( btn ) =>
 			btn.addEventListener( 'click', async () => {
 				const [ action, idx ] = btn.dataset.tact.split( ':' );
@@ -3212,6 +3228,42 @@
 			</div>`;
 		}
 
+		if ( m.type === 'theme-install' ) {
+			return `
+			<div class="minn-modal-overlay" id="minn-modal-overlay">
+				<div class="minn-modal wide">
+					<div class="minn-modal-head">
+						<div class="minn-modal-title">Add theme</div>
+						<button class="minn-x-btn" id="minn-modal-close">×</button>
+					</div>
+					<div class="minn-pi-body">
+						<div class="minn-dropzone compact" id="minn-ti-dropzone">
+							${ icon( 'upload' ) }
+							<div class="minn-dropzone-sub">Drop a theme <b>.zip</b> here or <b>browse</b></div>
+							<input type="file" id="minn-ti-file" accept=".zip" hidden>
+						</div>
+						<input class="minn-input" id="minn-ti-search" placeholder="Search the WordPress.org theme directory…" value="${ esc( m.q ) }" autocomplete="off">
+						<div class="minn-pi-results">
+							${ m.searching ? '<div class="minn-loading">Searching…</div>'
+							: m.results == null ? '<div class="minn-empty" style="padding:20px;">Search for a theme, or drop a zip above.</div>'
+							: ! m.results.length ? `<div class="minn-empty" style="padding:20px;">No results for “${ esc( m.q ) }”.</div>`
+							: `<div class="minn-ti-grid">
+								${ m.results.map( ( t, i ) => `
+								<div class="minn-ti-card">
+									<div class="minn-theme-shot"${ t.screenshot ? ` style="background-image:url('${ esc( t.screenshot ) }')"` : '' }></div>
+									<div class="minn-ti-info">
+										<div class="minn-row-title">${ esc( t.name ) }</div>
+										<div class="minn-pi-meta">${ t.installs ? Number( t.installs ).toLocaleString() + '+ installs · ' : '' }v${ esc( t.version ) }</div>
+										<button class="minn-btn-soft" data-ti="${ i }" ${ t.active ? 'disabled' : '' }>${ t.active ? 'Active' : t.installed ? 'Activate' : 'Install' }</button>
+									</div>
+								</div>` ).join( '' ) }
+							</div>` }
+						</div>
+					</div>
+				</div>
+			</div>`;
+		}
+
 		if ( m.type === 'picker' ) {
 			const items = m.items;
 			return `
@@ -3315,6 +3367,101 @@
 		if ( m.type === 'plugin-install' ) {
 			bindPluginInstallModal( m );
 		}
+
+		if ( m.type === 'theme-install' ) {
+			bindThemeInstallModal( m );
+		}
+	}
+
+	/* ===== Theme install modal (wp.org search + zip upload) ===== */
+
+	let tiSearchTimer = null;
+
+	function bindThemeInstallModal( m ) {
+		const input = $( '#minn-ti-search' );
+		input.focus();
+		input.setSelectionRange( input.value.length, input.value.length );
+		input.addEventListener( 'input', () => {
+			m.q = input.value.trim();
+			clearTimeout( tiSearchTimer );
+			if ( ! m.q ) return;
+			tiSearchTimer = setTimeout( async () => {
+				m.searching = true;
+				renderOverlays();
+				try {
+					const r = await api( 'minn-admin/v1/themes/search?q=' + encodeURIComponent( m.q ) );
+					if ( state.modal !== m ) return;
+					m.results = r.themes;
+				} catch ( e ) {
+					toast( e.message, true );
+					m.results = [];
+				}
+				m.searching = false;
+				renderOverlays();
+			}, 400 );
+		} );
+
+		$$( '[data-ti]' ).forEach( ( btn ) =>
+			btn.addEventListener( 'click', async () => {
+				const t = m.results[ parseInt( btn.dataset.ti, 10 ) ];
+				if ( ! t ) return;
+				const activating = btn.textContent.trim() === 'Activate';
+				if ( activating && ! confirm( `Switch the site's theme to “${ t.name }”? This changes how the whole site looks.` ) ) return;
+				btn.disabled = true;
+				btn.textContent = activating ? 'Activating…' : 'Installing…';
+				try {
+					if ( activating ) {
+						await api( 'minn-admin/v1/themes/activate', { method: 'POST', body: JSON.stringify( { stylesheet: t.slug } ) } );
+						toast( `${ t.name } is now the active theme` );
+						t.active = true;
+					} else {
+						await api( 'minn-admin/v1/themes/install', { method: 'POST', body: JSON.stringify( { slug: t.slug } ) } );
+						toast( `${ t.name } installed` );
+						t.installed = true;
+					}
+					state.cache.themes = null;
+					if ( state.route === 'extensions' ) renderExtensions();
+					renderOverlays();
+				} catch ( e ) {
+					toast( e.message, true );
+					renderOverlays();
+				}
+			} )
+		);
+
+		const zone = $( '#minn-ti-dropzone' );
+		const file = $( '#minn-ti-file' );
+		const uploadZip = async ( f ) => {
+			if ( ! f ) return;
+			if ( ! /\.zip$/i.test( f.name ) ) {
+				toast( 'Theme uploads must be .zip files', true );
+				return;
+			}
+			zone.classList.add( 'minn-busy' );
+			toast( `Installing ${ f.name }…` );
+			const fd = new FormData();
+			fd.append( 'file', f );
+			try {
+				await api( 'minn-admin/v1/themes/upload', { method: 'POST', body: fd } );
+				toast( 'Theme installed — activate it from the Themes tab' );
+				state.cache.themes = null;
+				closeModal();
+				if ( state.route === 'extensions' ) renderExtensions();
+			} catch ( e ) {
+				toast( e.message, true );
+				zone.classList.remove( 'minn-busy' );
+			}
+		};
+		zone.addEventListener( 'click', () => file.click() );
+		file.addEventListener( 'change', () => uploadZip( file.files[ 0 ] ) );
+		zone.addEventListener( 'dragover', ( e ) => { e.preventDefault(); e.stopPropagation(); zone.classList.add( 'over' ); } );
+		zone.addEventListener( 'dragleave', () => zone.classList.remove( 'over' ) );
+		zone.addEventListener( 'drop', ( e ) => {
+			e.preventDefault();
+			e.stopPropagation();
+			zone.classList.remove( 'over' );
+			uploadZip( e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[ 0 ] );
+		} );
 	}
 
 	/* ===== Plugin install modal (wp.org search + zip upload) ===== */

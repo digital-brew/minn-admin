@@ -146,6 +146,54 @@ class Minn_Admin_REST {
 
 		register_rest_route(
 			self::NS,
+			'/themes/search',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( __CLASS__, 'search_themes' ),
+				'permission_callback' => function () {
+					return current_user_can( 'install_themes' );
+				},
+				'args'                => array(
+					'q' => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/themes/install',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'install_theme' ),
+				'permission_callback' => function () {
+					return current_user_can( 'install_themes' );
+				},
+				'args'                => array(
+					'slug' => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/themes/upload',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'upload_theme' ),
+				'permission_callback' => function () {
+					return current_user_can( 'install_themes' ) && current_user_can( 'upload_files' );
+				},
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/plugins/search',
 			array(
 				'methods'             => 'GET',
@@ -706,6 +754,106 @@ class Minn_Admin_REST {
 		}
 		$theme = wp_get_theme( $stylesheet );
 		return rest_ensure_response( array( 'updated' => true, 'version' => $theme->get( 'Version' ) ) );
+	}
+
+	/**
+	 * Search the wordpress.org theme directory (proxied server-side).
+	 */
+	public static function search_themes( WP_REST_Request $request ) {
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
+
+		$res = themes_api(
+			'query_themes',
+			array(
+				'search'   => sanitize_text_field( $request['q'] ),
+				'per_page' => 12,
+				'fields'   => array(
+					'screenshot_url' => true,
+					'rating'         => true,
+					'active_installs'=> true,
+				),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		$installed = array_keys( wp_get_themes() );
+
+		$items = array();
+		foreach ( (array) $res->themes as $t ) {
+			$t       = (array) $t;
+			$items[] = array(
+				'slug'       => $t['slug'],
+				'name'       => html_entity_decode( wp_strip_all_tags( $t['name'] ), ENT_QUOTES ),
+				'version'    => isset( $t['version'] ) ? $t['version'] : '',
+				'screenshot' => isset( $t['screenshot_url'] ) ? $t['screenshot_url'] : '',
+				'installs'   => isset( $t['active_installs'] ) ? (int) $t['active_installs'] : 0,
+				'installed'  => in_array( $t['slug'], $installed, true ),
+				'active'     => get_stylesheet() === $t['slug'],
+			);
+		}
+		return rest_ensure_response( array( 'themes' => $items ) );
+	}
+
+	/**
+	 * Install a theme from the wordpress.org directory by slug.
+	 */
+	public static function install_theme( WP_REST_Request $request ) {
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+
+		$slug = sanitize_key( $request['slug'] );
+		$api  = themes_api( 'theme_information', array( 'slug' => $slug ) );
+		if ( is_wp_error( $api ) ) {
+			return $api;
+		}
+
+		$skin     = new WP_Ajax_Upgrader_Skin();
+		$upgrader = new Theme_Upgrader( $skin );
+		$result   = $upgrader->install( $api->download_link );
+
+		if ( ! $result || is_wp_error( $result ) ) {
+			$errors = $skin->get_error_messages();
+			return new WP_Error( 'install_failed', $errors ? implode( ' ', (array) $errors ) : 'Install failed.', array( 'status' => 500 ) );
+		}
+		return rest_ensure_response( array( 'installed' => true, 'stylesheet' => $slug ) );
+	}
+
+	/**
+	 * Install a theme from an uploaded zip.
+	 */
+	public static function upload_theme( WP_REST_Request $request ) {
+		$files = $request->get_file_params();
+		if ( empty( $files['file'] ) || empty( $files['file']['tmp_name'] ) ) {
+			return new WP_Error( 'no_file', 'No file uploaded.', array( 'status' => 400 ) );
+		}
+		if ( ! preg_match( '/\.zip$/i', $files['file']['name'] ) ) {
+			return new WP_Error( 'not_zip', 'Theme uploads must be .zip files.', array( 'status' => 400 ) );
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/misc.php';
+
+		$package = wp_tempnam( $files['file']['name'] );
+		if ( ! $package || ! move_uploaded_file( $files['file']['tmp_name'], $package ) ) {
+			return new WP_Error( 'move_failed', 'Could not store the upload.', array( 'status' => 500 ) );
+		}
+
+		$skin     = new WP_Ajax_Upgrader_Skin();
+		$upgrader = new Theme_Upgrader( $skin );
+		$result   = $upgrader->install( $package );
+		@unlink( $package ); // phpcs:ignore
+
+		if ( ! $result || is_wp_error( $result ) ) {
+			$errors = $skin->get_error_messages();
+			return new WP_Error( 'install_failed', $errors ? implode( ' ', (array) $errors ) : 'Install failed.', array( 'status' => 500 ) );
+		}
+		return rest_ensure_response( array( 'installed' => true, 'stylesheet' => $upgrader->theme_info() ? $upgrader->theme_info()->get_stylesheet() : null ) );
 	}
 
 	/**

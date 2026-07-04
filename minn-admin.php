@@ -33,6 +33,7 @@ require_once MINN_ADMIN_DIR . 'includes/adapters/koko-analytics.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/wp-statistics.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/burst-statistics.php';
 require_once MINN_ADMIN_DIR . 'includes/adapters/independent-analytics.php';
+require_once MINN_ADMIN_DIR . 'includes/adapters/simple-history.php';
 
 Minn_Admin::init();
 Minn_Admin_REST::init();

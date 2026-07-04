@@ -131,4 +131,7 @@ plus a descriptor. Rules of the road: check capabilities in `permission_callback
   REST permission checks keep working.
 - Escape nothing yourself — Minn escapes every value it renders.
 - Bundled adapters live in `includes/adapters/` and are guarded by `class_exists`/`defined`
-  checks; PRs adding adapters for widely-used plugins are welcome.
+  checks; PRs adding adapters for widely-used plugins are welcome. Current set: Gravity Forms,
+  Gravity SMTP, ACF, Simple History, and four analytics providers (Koko, WP Statistics, Burst,
+  Independent Analytics).
+- Column keys support dot paths (`initiator_data.user_login`) plus an optional `altKey` fallback.

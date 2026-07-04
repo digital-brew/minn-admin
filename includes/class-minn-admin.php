@@ -161,6 +161,7 @@ class Minn_Admin {
 				'themes'       => current_user_can( 'switch_themes' ),
 				'deleteThemes' => current_user_can( 'delete_themes' ),
 				'updateThemes' => current_user_can( 'update_themes' ),
+				'installThemes' => current_user_can( 'install_themes' ),
 				'settings'     => current_user_can( 'manage_options' ),
 				'moderate'     => current_user_can( 'moderate_comments' ),
 				'upload'       => current_user_can( 'upload_files' ),

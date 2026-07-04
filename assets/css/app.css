@@ -535,6 +535,12 @@ a.minn-btn-soft { text-decoration: none; }
 .minn-help-body h4 { color: var(--text); font-size: 14px; margin: 18px 0 4px; }
 .minn-help-body p { margin: 6px 0; }
 
+.minn-ti-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 4px 0; }
+.minn-ti-card { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; background: var(--bg2); }
+.minn-ti-card .minn-theme-shot { aspect-ratio: 4 / 3; }
+.minn-ti-info { padding: 10px 12px 12px; }
+.minn-ti-info .minn-btn-soft { margin-top: 8px; width: 100%; justify-content: center; }
+
 /* ===== AI Access ===== */
 .minn-app-reveal {
   background: rgba(70,184,129,0.08); border: 1px solid rgba(70,184,129,0.3); border-radius: 10px;
