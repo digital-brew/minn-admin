@@ -529,11 +529,27 @@ a.minn-btn-soft { text-decoration: none; }
 .minn-island-preview > :last-child { margin-bottom: 0; }
 .minn-island-empty { color: var(--text3); font-size: 13.5px; font-style: italic; }
 
-/* ===== Code syntax highlighting ===== */
-.tok-kw { color: var(--accent2); }
-.tok-str { color: var(--green); }
-.tok-num { color: var(--amber); }
-.tok-com { color: var(--text3); font-style: italic; }
+/* ===== Code syntax highlighting =====
+   Code surfaces are always dark — fixed colors, not theme vars — so the
+   highlight palette reads identically in light and dark mode. */
+.minn-editor-body pre, .minn-revision-preview pre, .minn-surface-message pre {
+  background: #101013; color: #ececed; border: 1px solid #2a2a31; border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto;
+}
+.minn-editor-body pre code, .minn-revision-preview pre code {
+  background: transparent; color: inherit; padding: 0; display: block; min-height: 1em;
+}
+.tok-kw { color: #8a80f8; }
+.tok-str { color: #46b881; }
+.tok-num { color: #e0a458; }
+.tok-var { color: #d073c0; }
+.tok-com { color: #6d6d78; font-style: italic; }
+
+.minn-code-lang {
+  width: auto; align-self: center; margin-left: 8px; font-size: 12px !important;
+  padding: 4px 26px 4px 9px !important; font-family: 'JetBrains Mono', monospace;
+  animation: minnScaleIn 0.12s ease;
+}
 
 /* ===== Editor panels (ACF etc.) ===== */
 .minn-panel-sub {

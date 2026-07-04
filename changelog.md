@@ -1,5 +1,16 @@
 # Changelog
 
+## **v0.2.0** - Unreleased
+
+### Added
+* **Code block languages:** A language picker (PHP, JS, HTML, CSS, bash, JSON, Python, SQL) appears in the editor toolbar whenever the caret is inside a code block. The choice is stored as a Prism-style `language-*` class on the `<code>` element — portable and theme-highlighter compatible — and drives language-aware syntax highlighting, including PHP `$variables` and `<?php` tags.
+* **Dark code surfaces:** Code blocks in the editor and previews always render on a dark surface with a fixed highlight palette, so syntax colors are equally readable in light and dark themes.
+
+### Fixed
+* Line breaks inside code blocks (entered as `<br>` by the browser) are preserved when saving.
+* Classic-content saves now strip syntax-highlight decoration from code blocks before writing to the database.
+* Elementor's internal post types (templates, floating elements) no longer appear as Content tabs.
+
 ## **v0.1.0** - July 3, 2026
 
 ### Added

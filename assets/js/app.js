@@ -467,6 +467,8 @@
 	}
 
 	// Custom post types with REST support, beyond post/page/attachment.
+	// Plugin-internal CPTs that would be noise (or dangerous) as Content tabs.
+	const HIDDEN_TYPES = [ 'post', 'page', 'attachment', 'elementor_library', 'e-floating-buttons', 'e-landing-page' ];
 	let typesPromise = null;
 	function loadTypes() {
 		if ( ! typesPromise ) {
@@ -474,7 +476,7 @@
 			// server-level _fields filter would strip it to {} over HTTP.
 			typesPromise = api( 'wp/v2/types?context=edit' ).then( ( types ) => {
 				state.cache.types = Object.values( types )
-					.filter( ( t ) => t.viewable && t.rest_base && ! [ 'post', 'page', 'attachment' ].includes( t.slug ) )
+					.filter( ( t ) => t.viewable && t.rest_base && ! HIDDEN_TYPES.includes( t.slug ) )
 					.map( ( t ) => ( { slug: t.slug, restBase: t.rest_base, name: t.name } ) );
 				return state.cache.types;
 			} );
@@ -1757,10 +1759,12 @@
 					: `<!-- wp:paragraph -->\n<p>${ el.innerHTML }</p>\n<!-- /wp:paragraph -->`;
 				pushBlock( 'quote', null, `<blockquote class="wp-block-quote">${ inner }</blockquote>` );
 			} else if ( tag === 'pre' ) {
-				// textContent so syntax-highlight spans never reach the database.
+				// Plain text so syntax-highlight spans never reach the database;
+				// the language class is preserved (Prism-style, theme-compatible).
 				const code = el.querySelector( 'code' );
-				const text = ( code || el ).textContent;
-				pushBlock( 'code', null, `<pre class="wp-block-code"><code>${ esc( text ) }</code></pre>` );
+				const text = codeTextOf( code || el );
+				const lang = codeLangOf( el );
+				pushBlock( 'code', null, `<pre class="wp-block-code"><code${ lang !== 'auto' ? ` class="language-${ lang }"` : '' }>${ esc( text ) }</code></pre>` );
 			} else if ( tag === 'ul' || tag === 'ol' ) {
 				el.classList.add( 'wp-block-list' );
 				const items = Array.from( el.querySelectorAll( ':scope > li' ) )
@@ -1807,45 +1811,91 @@
 
 	/* ===== Code syntax highlighting (no dependencies) ===== */
 
-	const HL_KEYWORDS = /\b(function|return|if|else|elseif|endif|for|foreach|endforeach|while|do|switch|case|default|break|continue|class|interface|trait|extends|implements|new|const|let|var|public|private|protected|static|final|abstract|echo|print|use|namespace|require|require_once|include|include_once|async|await|try|catch|finally|throw|typeof|instanceof|in|of|true|false|null|undefined|this|self|parent|def|import|from|export|as|global|add_action|add_filter)\b/g;
+	// The language rides on the <code> element as a Prism-style class
+	// (language-php), which survives serialization and is what most theme
+	// highlighters key on.
+	const CODE_LANGS = [ 'auto', 'php', 'js', 'html', 'css', 'bash', 'json', 'python', 'sql' ];
 
-	function highlightCode( text ) {
+	const HL_KEYWORD_SETS = {
+		php: 'function|return|if|else|elseif|endif|for|foreach|endforeach|while|do|switch|case|default|break|continue|class|interface|trait|extends|implements|new|public|private|protected|static|final|abstract|echo|print|use|namespace|require|require_once|include|include_once|try|catch|finally|throw|true|false|null|array|isset|empty|unset|global|const|fn|match|as|self|parent|add_action|add_filter',
+		js: 'function|return|if|else|for|while|do|switch|case|default|break|continue|class|extends|new|const|let|var|async|await|try|catch|finally|throw|typeof|instanceof|in|of|true|false|null|undefined|this|import|from|export|yield|delete|void',
+		css: 'important|inherit|initial|unset|auto|none|flex|grid|block|inline|absolute|relative|fixed|sticky|solid|dashed|hover|focus|before|after|root|media|keyframes',
+		bash: 'if|then|else|elif|fi|for|in|do|done|while|case|esac|function|echo|export|local|return|exit|true|false|sudo|cd|rm|cp|mv|grep|curl|wp',
+		json: 'true|false|null',
+		python: 'def|return|if|elif|else|for|while|break|continue|class|import|from|as|try|except|finally|raise|with|lambda|True|False|None|and|or|not|in|is|pass|yield|async|await|print|self',
+		sql: 'SELECT|FROM|WHERE|AND|OR|NOT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|LIMIT|OFFSET|AS|CREATE|TABLE|ALTER|DROP|INDEX|NULL|LIKE|EXISTS|UNION|DISTINCT|COUNT|SUM|AVG|MIN|MAX|HAVING|DESC|ASC',
+	};
+	HL_KEYWORD_SETS.auto = [ HL_KEYWORD_SETS.php, HL_KEYWORD_SETS.js, HL_KEYWORD_SETS.python, HL_KEYWORD_SETS.bash ].join( '|' );
+
+	function highlightHtml( text ) {
+		return esc( text )
+			.replace( /(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-com">$1</span>' )
+			.replace( /(&lt;\/?)([a-zA-Z][a-zA-Z0-9-]*)/g, '$1<span class="tok-kw">$2</span>' )
+			.replace( /(&quot;[^&\n]*?&quot;)/g, '<span class="tok-str">$1</span>' );
+	}
+
+	function highlightCode( text, lang ) {
+		lang = CODE_LANGS.includes( lang ) ? lang : 'auto';
+		if ( lang === 'html' ) return highlightHtml( text );
+		const kw = new RegExp( '\\b(' + ( HL_KEYWORD_SETS[ lang ] || HL_KEYWORD_SETS.auto ) + ')\\b', lang === 'sql' ? 'gi' : 'g' );
+		const phpish = lang === 'php' || lang === 'auto';
 		const out = [];
-		const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:^|(?<=\s))#[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(\d+(?:\.\d+)?)\b/g;
-		const plain = ( s ) => esc( s ).replace( HL_KEYWORDS, '<span class="tok-kw">$1</span>' );
+		const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:^|(?<=\s))#[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\$[a-zA-Z_][a-zA-Z0-9_]*)|\b(\d+(?:\.\d+)?)\b/g;
+		const plain = ( s ) => {
+			s = esc( s ).replace( kw, '<span class="tok-kw">$1</span>' );
+			if ( phpish ) s = s.replace( /(&lt;\?php|&lt;\?=|\?&gt;)/g, '<span class="tok-kw">$1</span>' );
+			return s;
+		};
 		let last = 0;
 		let m;
 		while ( ( m = re.exec( text ) ) ) {
 			out.push( plain( text.slice( last, m.index ) ) );
 			if ( m[ 1 ] ) out.push( `<span class="tok-com">${ esc( m[ 1 ] ) }</span>` );
 			else if ( m[ 2 ] ) out.push( `<span class="tok-str">${ esc( m[ 2 ] ) }</span>` );
-			else out.push( `<span class="tok-num">${ esc( m[ 3 ] ) }</span>` );
+			else if ( m[ 3 ] ) out.push( `<span class="tok-var">${ esc( m[ 3 ] ) }</span>` );
+			else out.push( `<span class="tok-num">${ esc( m[ 4 ] ) }</span>` );
 			last = m.index + m[ 0 ].length;
 		}
 		out.push( plain( text.slice( last ) ) );
 		return out.join( '' );
 	}
 
+	const codeLangOf = ( pre ) => {
+		const code = pre.querySelector( 'code' );
+		return ( code && ( code.className.match( /language-([a-z0-9]+)/ ) || [] )[ 1 ] ) || 'auto';
+	};
+
+	// textContent drops <br> line breaks (contenteditable inserts them on
+	// Enter) — convert them to newlines before reading code text.
+	function codeTextOf( el ) {
+		const clone = el.cloneNode( true );
+		clone.querySelectorAll( 'br' ).forEach( ( br ) => br.replaceWith( '\n' ) );
+		clone.querySelectorAll( 'div, p' ).forEach( ( d ) => d.prepend( '\n' ) );
+		return clone.textContent.replace( /^\n/, '' );
+	}
+
 	// Re-render code blocks with highlight spans. Skips the block holding the
-	// caret; spans never persist (the serializer stores pre via textContent).
-	function highlightCodeBlocks( container ) {
+	// caret (unless forced); spans never persist — serialization stores pre
+	// blocks via textContent.
+	function highlightCodeBlocks( container, force ) {
 		const sel = window.getSelection();
 		const anchorEl = sel && sel.anchorNode
 			? ( sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement )
 			: null;
 		$$( 'pre', container ).forEach( ( pre ) => {
-			if ( anchorEl && pre.contains( anchorEl ) ) return;
+			if ( ! force && anchorEl && pre.contains( anchorEl ) ) return;
 			if ( pre.closest( '.minn-block-island' ) ) return; // islands stay verbatim
 			let code = pre.querySelector( 'code' );
-			const text = ( code || pre ).textContent;
-			if ( pre.dataset.hl === text ) return;
+			const lang = codeLangOf( pre );
+			const text = codeTextOf( code || pre );
+			if ( pre.dataset.hl === lang + '|' + text ) return;
 			if ( ! code ) {
 				pre.textContent = '';
 				code = document.createElement( 'code' );
 				pre.appendChild( code );
 			}
-			code.innerHTML = highlightCode( text );
-			pre.dataset.hl = text;
+			code.innerHTML = highlightCode( text, lang );
+			pre.dataset.hl = lang + '|' + text;
 		} );
 	}
 
@@ -1941,7 +1991,7 @@
 		if ( ed.mode !== 'locked' ) {
 			const body = $( '#minn-editor-body' );
 			if ( body ) {
-				payload.content = ed.mode === 'blocks' ? serializeToBlocks( body, ed.islands ) : body.innerHTML;
+				payload.content = ed.mode === 'blocks' ? serializeToBlocks( body, ed.islands ) : classicHtml( body );
 			}
 		}
 		if ( ed.type === 'posts' && ed.catsDirty ) {
@@ -1977,6 +2027,19 @@
 			toast( e.message, true );
 		}
 		state.saving = false;
+	}
+
+	// Classic-mode save: innerHTML, but with highlight spans stripped from code
+	// blocks so decoration never reaches the database.
+	function classicHtml( body ) {
+		const clone = body.cloneNode( true );
+		$$( 'pre', clone ).forEach( ( pre ) => {
+			const lang = codeLangOf( pre );
+			const text = codeTextOf( pre );
+			pre.removeAttribute( 'data-hl' );
+			pre.innerHTML = `<code${ lang !== 'auto' ? ` class="language-${ lang }"` : '' }>${ esc( text ) }</code>`;
+		} );
+		return clone.innerHTML;
 	}
 
 	function scheduleAutosave() {
@@ -2209,6 +2272,9 @@
 					<button class="minn-tool" data-cmd="link" title="Link">🔗</button>
 					<button class="minn-tool" data-cmd="image" title="Insert image">🖼</button>
 					<button class="minn-tool" data-block="p" title="Paragraph">¶</button>
+					<select class="minn-input minn-code-lang" id="minn-code-lang" title="Code language" hidden>
+						${ CODE_LANGS.map( ( l ) => `<option value="${ l }">${ l === 'auto' ? 'language: auto' : l }</option>` ).join( '' ) }
+					</select>
 					<span class="minn-tool-hint">type / for blocks</span>
 				</div>` }
 				<div class="minn-editor-body${ locked ? ' locked' : '' }" id="minn-editor-body" contenteditable="${ locked ? 'false' : 'true' }"></div>
@@ -2257,10 +2323,63 @@
 			);
 
 			bindSlashMenu( body, insertImage );
+			bindCodeLangPicker( body );
 		}
 
 		renderEditorSide();
 		if ( ! ed.id ) $( '#minn-editor-title', view ).focus();
+	}
+
+	/* ===== Code language picker (shows when the caret is in a code block) ===== */
+
+	function bindCodeLangPicker( body ) {
+		const select = $( '#minn-code-lang' );
+		if ( ! select ) return;
+		let currentPre = null;
+
+		const sync = () => {
+			if ( ! document.contains( body ) ) {
+				document.removeEventListener( 'selectionchange', sync );
+				return;
+			}
+			if ( document.activeElement === select ) return; // interacting with the picker itself
+			const sel = window.getSelection();
+			let el = sel && sel.anchorNode
+				? ( sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement )
+				: null;
+			const pre = el && body.contains( el ) ? el.closest( 'pre' ) : null;
+			currentPre = pre && ! pre.closest( '.minn-block-island' ) ? pre : null;
+			select.hidden = ! currentPre;
+			if ( currentPre ) select.value = codeLangOf( currentPre );
+		};
+
+		if ( window._minnLangSync ) document.removeEventListener( 'selectionchange', window._minnLangSync );
+		window._minnLangSync = sync;
+		document.addEventListener( 'selectionchange', sync );
+
+		select.addEventListener( 'change', () => {
+			if ( ! currentPre ) return;
+			const pre = currentPre;
+			let code = pre.querySelector( 'code' );
+			if ( ! code ) {
+				const text = codeTextOf( pre );
+				pre.textContent = '';
+				code = document.createElement( 'code' );
+				code.textContent = text;
+				pre.appendChild( code );
+			}
+			code.className = select.value === 'auto' ? '' : 'language-' + select.value;
+			delete pre.dataset.hl;
+			highlightCodeBlocks( body, true );
+			// Re-highlighting rebuilds the block — put the caret back at its end.
+			const range = document.createRange();
+			range.selectNodeContents( pre.querySelector( 'code' ) || pre );
+			range.collapse( false );
+			const s = window.getSelection();
+			s.removeAllRanges();
+			s.addRange( range );
+			scheduleAutosave();
+		} );
 	}
 
 	/* ===== Slash command menu ===== */
